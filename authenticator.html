@@ -2,140 +2,135 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>网页版身份验证器</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简网页验证器</title>
     <script src="https://cdn.jsdelivr.net/npm/otplib@12.0.1/otplib-browser.js"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 40px 20px; }
-        .container { width: 100%; max-width: 450px; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        h2 { margin-top: 0; color: #1c1e21; font-size: 24px; }
-        .input-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
-        input { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-        button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
-        .add-btn { background: #007bff; color: white; }
-        .item { border-bottom: 1px solid #f0f0f0; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
-        .code { font-family: monospace; font-size: 28px; color: #007bff; font-weight: bold; cursor: pointer; }
-        .code:active { opacity: 0.6; }
-        .name { color: #65676b; font-size: 14px; margin-bottom: 4px; }
-        .delete-btn { background: #ffebee; color: #dc3545; padding: 6px 12px; font-size: 12px; }
-        .progress-bar { height: 4px; background: #eee; width: 100%; margin-top: 20px; border-radius: 2px; }
-        #progressInner { height: 100%; background: #007bff; width: 100%; transition: width 0.5s linear; }
+        :root { --primary: #007AFF; --bg: #f5f5f7; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; color: #1d1d1f; }
+        .card { width: 100%; max-width: 400px; background: white; padding: 24px; border-radius: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+        h2 { margin: 0 0 20px 0; font-weight: 600; text-align: center; }
+        
+        .input-box { background: #f9f9fb; padding: 16px; border-radius: 12px; margin-bottom: 20px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; outline: none; }
+        input:focus { border-color: var(--primary); }
+        .add-btn { width: 100%; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        
+        .account-item { border-bottom: 1px solid #f2f2f2; padding: 16px 0; display: flex; justify-content: space-between; align-items: center; }
+        .account-info .label { font-size: 13px; color: #86868b; margin-bottom: 4px; }
+        .account-info .code { font-family: 'Monaco', monospace; font-size: 28px; color: var(--primary); font-weight: 700; letter-spacing: 2px; cursor: pointer; }
+        
+        .delete-btn { color: #ff3b30; background: none; border: none; font-size: 13px; cursor: pointer; padding: 8px; }
+        
+        .timer-container { height: 4px; background: #eee; width: 100%; margin-top: 20px; border-radius: 2px; overflow: hidden; }
+        #timerBar { height: 100%; background: var(--primary); width: 100%; transition: width 1s linear; }
     </style>
 </head>
 <body>
 
-<div class="container">
+<div class="card">
     <h2>身份验证器</h2>
     
-    <div class="input-group">
-        <input type="text" id="nameInput" placeholder="备注名称 (如: GitHub)">
-        <input type="text" id="keyInput" placeholder="输入 Secret Key (Base32格式)">
-        <button class="add-btn" onclick="addKey()">添加新密钥</button>
+    <div class="input-box">
+        <input type="text" id="accName" placeholder="服务名称 (例: GitHub)">
+        <input type="text" id="accKey" placeholder="输入 Secret Key">
+        <button class="add-btn" id="addBtn">添加账号</button>
     </div>
 
-    <div id="keyList"></div>
+    <div id="list"></div>
     
-    <div class="progress-bar">
-        <div id="progressInner"></div>
+    <div class="timer-container">
+        <div id="timerBar"></div>
     </div>
 </div>
 
 <script>
-    // --- 1. 变量声明置顶 ---
-    const totp = window.otplib.totp;
-    let accounts = [];
-
-    // --- 2. 初始化函数 ---
-    function init() {
-        try {
-            const saved = localStorage.getItem('mfa_keys');
-            accounts = saved ? JSON.parse(saved) : [];
-        } catch (e) {
-            console.error("加载数据失败", e);
-            accounts = [];
-        }
-        renderList();
-    }
-
-    // --- 3. 核心功能函数 ---
-    function renderList() {
-        const listDiv = document.getElementById('keyList');
-        listDiv.innerHTML = '';
+    // 确保 DOM 加载后执行
+    document.addEventListener('DOMContentLoaded', () => {
+        const totp = window.otplib.totp;
+        const listContainer = document.getElementById('list');
+        const timerBar = document.getElementById('timerBar');
         
-        accounts.forEach((acc, index) => {
-            let code = "------";
-            try {
-                // 移除空格并生成
-                const cleanKey = acc.key.replace(/\s+/g, '').toUpperCase();
-                code = totp.generate(cleanKey);
-            } catch (e) {
-                code = "KEY错误";
+        // 1. 从本地加载数据
+        let accounts = JSON.parse(localStorage.getItem('mfa_data') || '[]');
+
+        // 2. 渲染函数
+        const render = () => {
+            listContainer.innerHTML = '';
+            accounts.forEach((item, index) => {
+                let currentCode = "------";
+                try {
+                    // 清理密钥格式：去空格并转大写
+                    const secret = item.key.replace(/\s+/g, '').toUpperCase();
+                    currentCode = totp.generate(secret);
+                } catch (e) {
+                    currentCode = "ERROR";
+                }
+
+                const div = document.createElement('div');
+                div.className = 'account-item';
+                div.innerHTML = `
+                    <div class="account-info">
+                        <div class="label">${item.name}</div>
+                        <div class="code" data-code="${currentCode}">${currentCode}</div>
+                    </div>
+                    <button class="delete-btn" data-index="${index}">删除</button>
+                `;
+                listContainer.appendChild(div);
+            });
+        };
+
+        // 3. 添加功能
+        document.getElementById('addBtn').addEventListener('click', () => {
+            const name = document.getElementById('accName').value.trim();
+            const key = document.getElementById('accKey').value.trim();
+            
+            if (name && key) {
+                accounts.push({ name, key });
+                localStorage.setItem('mfa_data', JSON.stringify(accounts));
+                document.getElementById('accName').value = '';
+                document.getElementById('accKey').value = '';
+                render();
+            } else {
+                alert('请填写完整信息');
             }
-
-            const item = document.createElement('div');
-            item.className = 'item';
-            item.innerHTML = `
-                <div>
-                    <div class="name">${acc.name}</div>
-                    <div class="code" onclick="copyCode('${code}')" title="点击复制">${code}</div>
-                </div>
-                <button class="delete-btn" onclick="deleteKey(${index})">删除</button>
-            `;
-            listDiv.appendChild(item);
         });
-    }
 
-    function addKey() {
-        const nameNode = document.getElementById('nameInput');
-        const keyNode = document.getElementById('keyInput');
-        
-        const name = nameNode.value.trim();
-        const key = keyNode.value.trim();
-
-        if (!name || !key) {
-            alert("名称和密钥不能为空");
-            return;
-        }
-
-        accounts.push({ name, key });
-        localStorage.setItem('mfa_keys', JSON.stringify(accounts));
-        
-        nameNode.value = '';
-        keyNode.value = '';
-        renderList();
-    }
-
-    function deleteKey(index) {
-        if (confirm('确定删除该密钥吗？')) {
-            accounts.splice(index, 1);
-            localStorage.setItem('mfa_keys', JSON.stringify(accounts));
-            renderList();
-        }
-    }
-
-    function copyCode(code) {
-        navigator.clipboard.writeText(code).then(() => {
-            alert("验证码已复制: " + code);
+        // 4. 事件代理：处理删除和点击复制
+        listContainer.addEventListener('click', (e) => {
+            // 删除逻辑
+            if (e.target.classList.contains('delete-btn')) {
+                const idx = e.target.dataset.index;
+                if (confirm('确定删除吗？')) {
+                    accounts.splice(idx, 1);
+                    localStorage.setItem('mfa_data', JSON.stringify(accounts));
+                    render();
+                }
+            }
+            // 复制逻辑
+            if (e.target.classList.contains('code')) {
+                const code = e.target.dataset.code;
+                navigator.clipboard.writeText(code);
+                const originalText = e.target.innerText;
+                e.target.innerText = 'COPIED!';
+                setTimeout(() => e.target.innerText = originalText, 800);
+            }
         });
-    }
 
-    // --- 4. 循环计时器 ---
-    setInterval(() => {
-        const epoch = Math.floor(Date.now() / 1000);
-        const seconds = epoch % 30;
-        const remaining = 30 - seconds;
-        
-        // 更新进度条
-        document.getElementById('progressInner').style.width = (remaining / 30 * 100) + '%';
-        
-        // 每 30 秒整或页面刚加载时刷新数字
-        if (seconds === 0) {
-            renderList();
-        }
-    }, 1000);
+        // 5. 定时刷新逻辑
+        setInterval(() => {
+            const epoch = Math.floor(Date.now() / 1000);
+            const seconds = epoch % 30;
+            const progress = ((30 - seconds) / 30) * 100;
+            timerBar.style.width = progress + '%';
+            
+            // 每 30 秒整刷新一次数字
+            if (seconds === 0) render();
+        }, 1000);
 
-    // 执行初始化
-    init();
-
+        // 初始渲染
+        render();
+    });
 </script>
 
 </body>
