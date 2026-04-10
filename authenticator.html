@@ -51,6 +51,11 @@ body {
     color:#666;
 }
 
+.user {
+    font-size:12px;
+    color:#999;
+}
+
 .code {
     font-size:28px;
     font-weight:600;
@@ -75,15 +80,16 @@ body {
     clip-path: inset(0 0 calc(var(--p)*1%) 0);
 }
 
-.edit .delete {
-    display:block;
-}
-
 .delete {
     display:none;
     color:red;
     font-size:12px;
     cursor:pointer;
+    margin-top:6px;
+}
+
+.edit .delete {
+    display:block;
 }
 
 .fab {
@@ -134,16 +140,40 @@ const totp = window.otplib.authenticator;
 
 let accounts = JSON.parse(localStorage.getItem('mfa')||'[]');
 let edit = false;
+let dragIndex = null;
 
+/* ---------- 解析输入 ---------- */
 function parseInput(input){
     if(input.startsWith('otpauth://')){
         const url = new URL(input);
+        const label = decodeURIComponent(url.pathname.slice(1));
+        let [issuerFromLabel, account] = label.split(':');
+
         return {
-            name: decodeURIComponent(url.pathname.slice(1)),
+            name: url.searchParams.get('issuer') || issuerFromLabel || '',
+            user: account || '',
             key: url.searchParams.get('secret')
         };
     }
-    return {name:'手动添加', key:input};
+    return { name:'', user:'', key:input };
+}
+
+/* ---------- 获取验证码 ---------- */
+function getCode(acc){
+    try{
+        let key;
+
+        if(acc.raw.startsWith('otpauth://')){
+            const url = new URL(acc.raw);
+            key = url.searchParams.get('secret');
+        }else{
+            key = acc.raw;
+        }
+
+        return totp.generate(key).replace(/(\d{3})(\d{3})/,'$1 $2');
+    }catch{
+        return '------';
+    }
 }
 
 function save(){
@@ -157,6 +187,7 @@ function toast(msg){
     setTimeout(()=>t.classList.remove('show'),1500);
 }
 
+/* ---------- 渲染 ---------- */
 function render(){
     const list = document.getElementById('list');
     list.innerHTML='';
@@ -166,10 +197,7 @@ function render(){
     const p = (30-sec)/30*100;
 
     accounts.forEach((acc,i)=>{
-        let code='------';
-        try{
-            code = totp.generate(acc.key).replace(/(\d{3})(\d{3})/,'$1 $2');
-        }catch{}
+        const code = getCode(acc);
 
         const div=document.createElement('div');
         div.className='card';
@@ -177,7 +205,8 @@ function render(){
 
         div.innerHTML=`
             <div class="info">
-                <div class="name">${acc.name}</div>
+                <div class="name">${acc.name || '未命名'}</div>
+                <div class="user">${acc.user || ''}</div>
                 <div class="code">${code}</div>
             </div>
             <div>
@@ -186,39 +215,78 @@ function render(){
             </div>
         `;
 
+        /* 复制 */
         div.onclick=async()=>{
             await navigator.clipboard.writeText(code.replace(' ',''));
             toast('已复制');
         };
 
+        /* 删除 */
         div.querySelector('.delete').onclick=(e)=>{
             e.stopPropagation();
             accounts.splice(i,1);
             save(); render();
         };
 
-        div.ondragstart=()=>drag=i;
+        /* 拖拽排序 */
+        div.ondragstart=()=>dragIndex=i;
+        div.ondragover=e=>e.preventDefault();
         div.ondrop=()=>{
-            const item=accounts.splice(drag,1)[0];
+            const item=accounts.splice(dragIndex,1)[0];
             accounts.splice(i,0,item);
             save(); render();
         };
-        div.ondragover=e=>e.preventDefault();
+
+        /* 编辑（双击） */
+        div.ondblclick = (e) => {
+            e.stopPropagation();
+
+            const raw = prompt('密钥或 otpauth://', acc.raw);
+            if(!raw) return;
+
+            const name = prompt('名称（可选）', acc.name);
+            const user = prompt('用户（可选）', acc.user);
+
+            const parsed = parseInput(raw);
+
+            accounts[i] = {
+                raw,
+                name: name || parsed.name || '未命名',
+                user: user || parsed.user || ''
+            };
+
+            save();
+            render();
+        };
 
         list.appendChild(div);
     });
 }
 
-document.getElementById('editBtn').onclick=()=>{
-    edit=!edit;
+/* ---------- 添加 ---------- */
+document.getElementById('addBtn').onclick=()=>{
+    const raw = prompt('输入密钥或 otpauth://');
+    if(!raw) return;
+
+    const nameInput = prompt('名称（可选）');
+    const userInput = prompt('用户（可选）');
+
+    const parsed = parseInput(raw);
+
+    accounts.push({
+        raw,
+        name: nameInput || parsed.name || '未命名',
+        user: userInput || parsed.user || ''
+    });
+
+    save();
     render();
 };
 
-document.getElementById('addBtn').onclick=()=>{
-    const input=prompt('输入密钥或 otpauth://');
-    if(!input) return;
-    accounts.push(parseInput(input));
-    save(); render();
+/* ---------- 编辑模式 ---------- */
+document.getElementById('editBtn').onclick=()=>{
+    edit=!edit;
+    render();
 };
 
 setInterval(render,1000);
