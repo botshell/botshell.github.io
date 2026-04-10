@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>网页版身份验证器</title>
+    <script src="https://cdn.jsdelivr.net/npm/otplib@12.0.1/otplib-browser.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .input-group { margin-bottom: 20px; display: flex; gap: 10px; }
+        input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; background: #007bff; color: white; }
+        .item { border-bottom: 1px solid #eee; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
+        .code { font-size: 24px; font-weight: bold; color: #007bff; letter-spacing: 2px; }
+        .name { color: #666; font-size: 14px; }
+        .delete-btn { background: #dc3545; font-size: 12px; }
+        .progress-bar { height: 4px; background: #eee; width: 100%; margin-top: 10px; border-radius: 2px; overflow: hidden; }
+        .progress-inner { height: 100%; background: #007bff; width: 0%; transition: width 1s linear; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>我的验证码</h2>
+    
+    <div class="input-group">
+        <input type="text" id="nameInput" placeholder="账号名称 (如: Google)">
+        <input type="text" id="keyInput" placeholder="Secret Key">
+        <button onclick="addKey()">添加</button>
+    </div>
+
+    <div id="keyList"></div>
+    
+    <div class="progress-bar">
+        <div id="progressInner" class="progress-inner"></div>
+    </div>
+</div>
+
+<script>
+    // 配置 otplib
+    const totp = window.otplib.totp;
+
+    // 从 LocalStorage 加载数据
+    let accounts = JSON.parse(localStorage.getItem('mfa_keys') || '[]');
+
+    function saveAndRender() {
+        localStorage.setItem('mfa_keys', JSON.stringify(accounts));
+        renderList();
+    }
+
+    function addKey() {
+        const name = document.getElementById('nameInput').value.trim();
+        const key = document.getElementById('keyInput').value.trim().replace(/\s+/g, '');
+        if (name && key) {
+            accounts.push({ name, key });
+            document.getElementById('nameInput').value = '';
+            document.getElementById('keyInput').value = '';
+            saveAndRender();
+        }
+    }
+
+    function deleteKey(index) {
+        if (confirm('确定删除吗？')) {
+            accounts.splice(index, 1);
+            saveAndRender();
+        }
+    }
+
+    function renderList() {
+        const listDiv = document.getElementById('keyList');
+        listDiv.innerHTML = '';
+        
+        accounts.forEach((acc, index) => {
+            let code = "ERROR";
+            try {
+                // 生成 6 位数字
+                code = totp.generate(acc.key);
+            } catch (e) {
+                code = "INVALID";
+            }
+
+            listDiv.innerHTML += `
+                <div class="item">
+                    <div>
+                        <div class="name">${acc.name}</div>
+                        <div class="code">${code}</div>
+                    </div>
+                    <button class="delete-btn" onclick="deleteKey(${index})">删除</button>
+                </div>
+            `;
+        });
+    }
+
+    // 每秒更新一次
+    setInterval(() => {
+        const seconds = Math.floor(Date.now() / 1000) % 30;
+        const percent = ((30 - seconds) / 30) * 100;
+        document.getElementById('progressInner').style.width = percent + '%';
+        
+        // 每当时间跳到 0 秒或 30 秒时刷新数字
+        if (seconds === 0) {
+            renderList();
+        }
+    }, 1000);
+
+    // 初始渲染
+    renderList();
+</script>
+
+</body>
+</html>
