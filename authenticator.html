@@ -1,152 +1,199 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>网页版身份验证器 - 稳定版</title>
+<meta charset="UTF-8">
+<title>身份验证器</title>
 
-    <!-- ✅ 正确引入 otplib v12 浏览器版本 -->
-    <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/buffer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/buffer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/index.js"></script>
 
-    <style>
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .input-group { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
-        input { padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        #addBtn { padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .item { border-bottom: 1px solid #eee; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
-        .code { font-size: 26px; font-weight: bold; color: #007bff; font-family: monospace; cursor: pointer; }
-        .name { color: #666; font-size: 14px; margin-bottom: 4px; }
-        .del-btn { background: #ff4d4f; color: white; border: none; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
-        .progress-bar { height: 4px; background: #eee; width: 100%; margin-top: 20px; }
-        #progressInner { height: 100%; background: #007bff; width: 0%; transition: width 1s linear; }
-    </style>
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f6f8fa;
+    padding: 20px;
+}
+
+.container {
+    max-width: 420px;
+    margin: auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #d0d7de;
+}
+
+.item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.name {
+    font-size: 13px;
+    color: #666;
+}
+
+.code-wrapper {
+    position: relative;
+    cursor: pointer;
+}
+
+.code {
+    font-size: 24px;
+    font-family: monospace;
+    font-weight: bold;
+}
+
+.tooltip {
+    position: absolute;
+    right: 0;
+    top: -20px;
+    font-size: 11px;
+    background: #24292f;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: 0.2s;
+}
+
+.tooltip.show {
+    opacity: 1;
+}
+
+.del-btn {
+    display: none;
+    background: red;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.edit-mode .del-btn {
+    display: inline-block;
+}
+
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+button {
+    cursor: pointer;
+}
+</style>
 </head>
+
 <body>
-
 <div class="container">
-    <h2>身份验证器</h2>
-    
-    <div class="input-group">
-        <input type="text" id="nameInput" placeholder="账号名称 (如: Github)">
-        <input type="text" id="keyInput" placeholder="Secret Key">
-        <button id="addBtn">添加密钥</button>
-    </div>
 
-    <div id="keyList"></div>
-    
-    <div class="progress-bar">
-        <div id="progressInner"></div>
-    </div>
+<div class="top-bar">
+    <button id="addBtn">添加</button>
+    <button id="editBtn">管理</button>
+</div>
+
+<input id="nameInput" placeholder="名称">
+<input id="keyInput" placeholder="Secret">
+
+<div id="list"></div>
+
 </div>
 
 <script>
-(function() {
-    // ✅ 正确使用 authenticator
-    const totp = window.otplib.authenticator;
-    
-    let accounts = [];
+const totp = window.otplib.authenticator;
 
-    const loadData = () => {
-        const saved = localStorage.getItem('mfa_keys');
-        if (saved) {
-            try {
-                accounts = JSON.parse(saved);
-            } catch(e) {
-                accounts = [];
-            }
-        }
-    };
+let accounts = [];
+let editMode = false;
+let dragIndex = null;
 
-    const saveData = () => {
-        localStorage.setItem('mfa_keys', JSON.stringify(accounts));
-    };
+const load = () => {
+    accounts = JSON.parse(localStorage.getItem('mfa') || '[]');
+};
 
-    const render = () => {
-        const listDiv = document.getElementById('keyList');
-        listDiv.innerHTML = '';
-        
-        accounts.forEach((acc, index) => {
-            let code = "------";
-            try {
-                const cleanKey = acc.key.replace(/\s+/g, '').toUpperCase();
-                code = totp.generate(cleanKey);
-            } catch (e) {
-                code = "KEY错误";
-            }
+const save = () => {
+    localStorage.setItem('mfa', JSON.stringify(accounts));
+};
 
-            const row = document.createElement('div');
-            row.className = 'item';
-            row.innerHTML = `
-                <div>
-                    <div class="name">${acc.name}</div>
-                    <div class="code" title="点击复制">${code}</div>
+const render = () => {
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+
+    document.body.classList.toggle('edit-mode', editMode);
+
+    accounts.forEach((acc, i) => {
+        let code = "------";
+        try {
+            code = totp.generate(acc.key.replace(/\s+/g,'').toUpperCase());
+        } catch {}
+
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.draggable = editMode;
+
+        div.innerHTML = `
+            <div>
+                <div class="name">${acc.name}</div>
+                <div class="code-wrapper">
+                    <div class="code">${code}</div>
+                    <div class="tooltip">Copied!</div>
                 </div>
-                <button class="del-btn" data-index="${index}">删除</button>
-            `;
-            listDiv.appendChild(row);
-        });
-    };
+            </div>
+            <button class="del-btn" data-i="${i}">删</button>
+        `;
 
-    document.getElementById('addBtn').addEventListener('click', () => {
-        const nameInp = document.getElementById('nameInput');
-        const keyInp = document.getElementById('keyInput');
-        const name = nameInp.value.trim();
-        const key = keyInp.value.trim();
+        // 复制
+        div.querySelector('.code-wrapper').onclick = async () => {
+            await navigator.clipboard.writeText(code);
+            const tip = div.querySelector('.tooltip');
+            tip.classList.add('show');
+            setTimeout(()=>tip.classList.remove('show'),1500);
+        };
 
-        if (name && key) {
-            accounts.push({ name, key });
-            saveData();
+        // 删除
+        div.querySelector('.del-btn').onclick = () => {
+            accounts.splice(i,1);
+            save();
             render();
-            nameInp.value = '';
-            keyInp.value = '';
-        }
-    });
+        };
 
-    document.getElementById('keyList').addEventListener('click', (e) => {
-        if (e.target.classList.contains('del-btn')) {
-            const index = e.target.getAttribute('data-index');
-            if (confirm('确定删除吗？')) {
-                accounts.splice(index, 1);
-                saveData();
-                render();
-            }
-        }
-
-        if (e.target.classList.contains('code')) {
-            const codeElement = e.target;
-            const codeText = codeElement.innerText;
-        
-            if (codeText !== "KEY错误" && codeText !== "------") {
-                navigator.clipboard.writeText(codeText);
-                
-                // 临时反馈
-                const originalColor = codeElement.style.color;
-                codeElement.innerText = "已复制";
-                codeElement.style.color = "#28a745"; // 变成绿色
-                
-                setTimeout(() => {
-                    codeElement.innerText = codeText;
-                    codeElement.style.color = originalColor;
-                }, 1000);
-            }
-        }
-    });
-
-    setInterval(() => {
-        const seconds = Math.floor(Date.now() / 1000) % 30;
-        const remaining = 30 - seconds;
-        document.getElementById('progressInner').style.width = (remaining / 30 * 100) + '%';
-        
-        if (seconds === 0) {
+        // 拖拽
+        div.ondragstart = () => dragIndex = i;
+        div.ondragover = e => e.preventDefault();
+        div.ondrop = () => {
+            const item = accounts.splice(dragIndex,1)[0];
+            accounts.splice(i,0,item);
+            save();
             render();
-        }
-    }, 1000);
+        };
 
-    loadData();
+        list.appendChild(div);
+    });
+};
+
+document.getElementById('addBtn').onclick = () => {
+    const name = nameInput.value.trim();
+    const key = keyInput.value.trim();
+    if(!name || !key) return;
+
+    accounts.push({name,key});
+    save();
     render();
-})();
-</script>
+};
 
+document.getElementById('editBtn').onclick = () => {
+    editMode = !editMode;
+    render();
+};
+
+setInterval(render,1000);
+
+load();
+render();
+</script>
 </body>
 </html>
