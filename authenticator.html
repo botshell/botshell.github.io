@@ -114,10 +114,21 @@
         }
 
         if (e.target.classList.contains('code')) {
-            const codeText = e.target.innerText;
+            const codeElement = e.target;
+            const codeText = codeElement.innerText;
+        
             if (codeText !== "KEY错误" && codeText !== "------") {
                 navigator.clipboard.writeText(codeText);
-                alert('已复制: ' + codeText);
+                
+                // 临时反馈
+                const originalColor = codeElement.style.color;
+                codeElement.innerText = "已复制";
+                codeElement.style.color = "#28a745"; // 变成绿色
+                
+                setTimeout(() => {
+                    codeElement.innerText = codeText;
+                    codeElement.style.color = originalColor;
+                }, 1000);
             }
         }
     });
