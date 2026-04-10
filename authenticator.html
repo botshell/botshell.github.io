@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <title>网页版身份验证器 - 稳定版</title>
-    <script src="https://cdn.jsdelivr.net/npm/otplib@12.0.1/otplib-browser.js"></script>
+
+    <!-- ✅ 正确引入 otplib v12 浏览器版本 -->
+    <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/buffer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/index.js"></script>
+
     <style>
         body { font-family: sans-serif; background: #f4f7f6; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
@@ -38,13 +42,11 @@
 
 <script>
 (function() {
-    // 确保 otplib 加载成功
-    const totp = window.otplib.totp;
+    // ✅ 正确使用 authenticator
+    const totp = window.otplib.authenticator;
     
-    // 核心数据变量
     let accounts = [];
 
-    // 从缓存初始化数据
     const loadData = () => {
         const saved = localStorage.getItem('mfa_keys');
         if (saved) {
@@ -56,12 +58,10 @@
         }
     };
 
-    // 保存数据到缓存
     const saveData = () => {
         localStorage.setItem('mfa_keys', JSON.stringify(accounts));
     };
 
-    // 渲染列表
     const render = () => {
         const listDiv = document.getElementById('keyList');
         listDiv.innerHTML = '';
@@ -69,7 +69,6 @@
         accounts.forEach((acc, index) => {
             let code = "------";
             try {
-                // 清理密钥中的空格并转大写
                 const cleanKey = acc.key.replace(/\s+/g, '').toUpperCase();
                 code = totp.generate(cleanKey);
             } catch (e) {
@@ -89,7 +88,6 @@
         });
     };
 
-    // 事件绑定：添加按钮
     document.getElementById('addBtn').addEventListener('click', () => {
         const nameInp = document.getElementById('nameInput');
         const keyInp = document.getElementById('keyInput');
@@ -105,9 +103,7 @@
         }
     });
 
-    // 事件绑定：列表内部点击（删除和复制）
     document.getElementById('keyList').addEventListener('click', (e) => {
-        // 处理删除
         if (e.target.classList.contains('del-btn')) {
             const index = e.target.getAttribute('data-index');
             if (confirm('确定删除吗？')) {
@@ -116,7 +112,7 @@
                 render();
             }
         }
-        // 处理复制
+
         if (e.target.classList.contains('code')) {
             const codeText = e.target.innerText;
             if (codeText !== "KEY错误" && codeText !== "------") {
@@ -126,7 +122,6 @@
         }
     });
 
-    // 定时器：每秒更新进度条和数字
     setInterval(() => {
         const seconds = Math.floor(Date.now() / 1000) % 30;
         const remaining = 30 - seconds;
@@ -137,7 +132,6 @@
         }
     }, 1000);
 
-    // 页面加载后的首次启动
     loadData();
     render();
 })();
