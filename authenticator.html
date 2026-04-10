@@ -2,198 +2,228 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>身份验证器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Authenticator</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/buffer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/index.js"></script>
 
 <style>
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #f6f8fa;
-    padding: 20px;
+    margin:0;
+    font-family: system-ui;
+    background:#f2f3f5;
+}
+
+.header {
+    background:#fff;
+    padding:16px;
+    font-size:18px;
+    font-weight:600;
+    display:flex;
+    justify-content:space-between;
+    border-bottom:1px solid #eee;
 }
 
 .container {
-    max-width: 420px;
-    margin: auto;
-    background: #fff;
-    padding: 20px;
-    border-radius: 12px;
-    border: 1px solid #d0d7de;
+    max-width:420px;
+    margin:auto;
 }
 
-.item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid #eee;
+.card {
+    background:#fff;
+    margin:10px;
+    padding:16px;
+    border-radius:14px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    box-shadow:0 2px 6px rgba(0,0,0,0.06);
+}
+
+.info {
+    display:flex;
+    flex-direction:column;
 }
 
 .name {
-    font-size: 13px;
-    color: #666;
-}
-
-.code-wrapper {
-    position: relative;
-    cursor: pointer;
+    font-size:14px;
+    color:#666;
 }
 
 .code {
-    font-size: 24px;
+    font-size:28px;
+    font-weight:600;
+    letter-spacing:2px;
     font-family: monospace;
-    font-weight: bold;
 }
 
-.tooltip {
-    position: absolute;
-    right: 0;
-    top: -20px;
-    font-size: 11px;
-    background: #24292f;
-    color: #fff;
-    padding: 2px 6px;
-    border-radius: 4px;
-    opacity: 0;
-    transition: 0.2s;
+.progress {
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    border:3px solid #ddd;
+    position:relative;
 }
 
-.tooltip.show {
-    opacity: 1;
+.progress::after {
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    border:3px solid #1a73e8;
+    clip-path: inset(0 0 calc(var(--p)*1%) 0);
 }
 
-.del-btn {
-    display: none;
-    background: red;
-    color: white;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
+.edit .delete {
+    display:block;
 }
 
-.edit-mode .del-btn {
-    display: inline-block;
+.delete {
+    display:none;
+    color:red;
+    font-size:12px;
+    cursor:pointer;
 }
 
-.top-bar {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 10px;
+.fab {
+    position:fixed;
+    bottom:20px;
+    right:20px;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:#1a73e8;
+    color:#fff;
+    font-size:28px;
+    border:none;
 }
 
-button {
-    cursor: pointer;
+.toast {
+    position:fixed;
+    bottom:80px;
+    left:50%;
+    transform:translateX(-50%);
+    background:#333;
+    color:#fff;
+    padding:8px 14px;
+    border-radius:6px;
+    opacity:0;
+    transition:0.2s;
 }
+
+.toast.show { opacity:1; }
 </style>
 </head>
 
 <body>
-<div class="container">
 
-<div class="top-bar">
-    <button id="addBtn">添加</button>
-    <button id="editBtn">管理</button>
+<div class="header">
+    Authenticator
+    <span id="editBtn">编辑</span>
 </div>
 
-<input id="nameInput" placeholder="名称">
-<input id="keyInput" placeholder="Secret">
+<div class="container" id="list"></div>
 
-<div id="list"></div>
+<button class="fab" id="addBtn">+</button>
 
-</div>
+<div class="toast" id="toast">已复制</div>
 
 <script>
 const totp = window.otplib.authenticator;
 
-let accounts = [];
-let editMode = false;
-let dragIndex = null;
+let accounts = JSON.parse(localStorage.getItem('mfa')||'[]');
+let edit = false;
 
-const load = () => {
-    accounts = JSON.parse(localStorage.getItem('mfa') || '[]');
-};
+function parseInput(input){
+    if(input.startsWith('otpauth://')){
+        const url = new URL(input);
+        return {
+            name: decodeURIComponent(url.pathname.slice(1)),
+            key: url.searchParams.get('secret')
+        };
+    }
+    return {name:'手动添加', key:input};
+}
 
-const save = () => {
+function save(){
     localStorage.setItem('mfa', JSON.stringify(accounts));
-};
+}
 
-const render = () => {
+function toast(msg){
+    const t = document.getElementById('toast');
+    t.innerText = msg;
+    t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),1500);
+}
+
+function render(){
     const list = document.getElementById('list');
-    list.innerHTML = '';
+    list.innerHTML='';
+    list.classList.toggle('edit', edit);
 
-    document.body.classList.toggle('edit-mode', editMode);
+    const sec = Math.floor(Date.now()/1000)%30;
+    const p = (30-sec)/30*100;
 
-    accounts.forEach((acc, i) => {
-        let code = "------";
-        try {
-            code = totp.generate(acc.key.replace(/\s+/g,'').toUpperCase());
-        } catch {}
+    accounts.forEach((acc,i)=>{
+        let code='------';
+        try{
+            code = totp.generate(acc.key).replace(/(\d{3})(\d{3})/,'$1 $2');
+        }catch{}
 
-        const div = document.createElement('div');
-        div.className = 'item';
-        div.draggable = editMode;
+        const div=document.createElement('div');
+        div.className='card';
+        div.draggable = edit;
 
-        div.innerHTML = `
-            <div>
+        div.innerHTML=`
+            <div class="info">
                 <div class="name">${acc.name}</div>
-                <div class="code-wrapper">
-                    <div class="code">${code}</div>
-                    <div class="tooltip">Copied!</div>
-                </div>
+                <div class="code">${code}</div>
             </div>
-            <button class="del-btn" data-i="${i}">删</button>
+            <div>
+                <div class="progress" style="--p:${p}"></div>
+                <div class="delete" data-i="${i}">删除</div>
+            </div>
         `;
 
-        // 复制
-        div.querySelector('.code-wrapper').onclick = async () => {
-            await navigator.clipboard.writeText(code);
-            const tip = div.querySelector('.tooltip');
-            tip.classList.add('show');
-            setTimeout(()=>tip.classList.remove('show'),1500);
+        div.onclick=async()=>{
+            await navigator.clipboard.writeText(code.replace(' ',''));
+            toast('已复制');
         };
 
-        // 删除
-        div.querySelector('.del-btn').onclick = () => {
+        div.querySelector('.delete').onclick=(e)=>{
+            e.stopPropagation();
             accounts.splice(i,1);
-            save();
-            render();
+            save(); render();
         };
 
-        // 拖拽
-        div.ondragstart = () => dragIndex = i;
-        div.ondragover = e => e.preventDefault();
-        div.ondrop = () => {
-            const item = accounts.splice(dragIndex,1)[0];
+        div.ondragstart=()=>drag=i;
+        div.ondrop=()=>{
+            const item=accounts.splice(drag,1)[0];
             accounts.splice(i,0,item);
-            save();
-            render();
+            save(); render();
         };
+        div.ondragover=e=>e.preventDefault();
 
         list.appendChild(div);
     });
-};
+}
 
-document.getElementById('addBtn').onclick = () => {
-    const name = nameInput.value.trim();
-    const key = keyInput.value.trim();
-    if(!name || !key) return;
-
-    accounts.push({name,key});
-    save();
+document.getElementById('editBtn').onclick=()=>{
+    edit=!edit;
     render();
 };
 
-document.getElementById('editBtn').onclick = () => {
-    editMode = !editMode;
-    render();
+document.getElementById('addBtn').onclick=()=>{
+    const input=prompt('输入密钥或 otpauth://');
+    if(!input) return;
+    accounts.push(parseInput(input));
+    save(); render();
 };
 
 setInterval(render,1000);
-
-load();
 render();
 </script>
+
 </body>
 </html>
