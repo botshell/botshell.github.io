@@ -9,9 +9,13 @@
 <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/index.js"></script>
 
 <style>
-body { margin:0; font-family:system-ui; background:#f2f3f5; }
+body{
+    margin:0;
+    font-family:system-ui;
+    background:#f2f3f5;
+}
 
-.header {
+.header{
     background:#fff;
     padding:16px;
     display:flex;
@@ -19,67 +23,77 @@ body { margin:0; font-family:system-ui; background:#f2f3f5; }
     border-bottom:1px solid #eee;
 }
 
-.container { max-width:420px; margin:auto; }
+.container{ max-width:420px; margin:auto; }
 
-.card {
+.card{
     background:#fff;
     margin:10px;
     padding:14px;
     border-radius:14px;
     box-shadow:0 2px 6px rgba(0,0,0,0.06);
+    position:relative;
 }
 
-.row { display:flex; justify-content:space-between; align-items:center; }
+.name{ font-size:14px; color:#666; outline:none; }
+.user{ font-size:12px; color:#999; outline:none; }
 
-.name { font-size:14px; color:#666; outline:none; }
-.user { font-size:12px; color:#999; outline:none; }
+.row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
 
-.code {
+.code{
     font-size:28px;
     font-weight:600;
     font-family:monospace;
     outline:none;
-    padding:6px 0;
 }
 
-.code.editable {
-    background:#f7f7f7;
-    border-radius:6px;
-    padding:8px;
-    font-size:14px;
+/* ===== 倒计时圆环 ===== */
+.circle{
+    width:42px;
+    height:42px;
+    border-radius:50%;
+    background:conic-gradient(#1a73e8 var(--p), #ddd 0);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    font-weight:600;
     color:#333;
-    min-height:22px;
 }
 
-.progress {
-    width:36px;
-    height:36px;
-    border-radius:50%;
-    border:3px solid #ddd;
-    position:relative;
-}
-
-.progress::after {
-    content:"";
+/* ===== 未保存小点 ===== */
+.dirty{
     position:absolute;
-    inset:0;
+    top:10px;
+    right:10px;
+    width:8px;
+    height:8px;
+    background:red;
     border-radius:50%;
-    border:3px solid #1a73e8;
-    clip-path: inset(0 0 calc(var(--p)*1%) 0);
 }
 
-button {
+/* ===== 编辑态 ===== */
+.editable{
+    background:#f7f7f7;
+    padding:4px;
+    border-radius:6px;
+}
+
+/* ===== 按钮 ===== */
+button{
     border:none;
     padding:6px 10px;
     border-radius:6px;
     cursor:pointer;
 }
 
-.save { background:#2da44e; color:#fff; }
-.cancel { background:#aaa; color:#fff; }
-.delete { background:red; color:#fff; }
+.save{ background:#2da44e; color:#fff; }
+.delete{ background:red; color:#fff; }
 
-.fab {
+.fab{
     position:fixed;
     bottom:20px;
     right:20px;
@@ -91,7 +105,7 @@ button {
     font-size:28px;
 }
 
-.toast {
+.toast{
     position:fixed;
     bottom:80px;
     left:50%;
@@ -101,10 +115,8 @@ button {
     padding:8px 14px;
     border-radius:6px;
     opacity:0;
-    transition:0.2s;
 }
-
-.toast.show { opacity:1; }
+.toast.show{ opacity:1; }
 </style>
 </head>
 
@@ -123,99 +135,100 @@ button {
 <script>
 const totp = window.otplib.authenticator;
 
-let accounts = JSON.parse(localStorage.getItem('mfa') || '[]');
-let edit = false;
-let adding = false;
+let accounts = JSON.parse(localStorage.getItem('mfa')||'[]');
+let edit=false;
+let adding=false;
 
-/* 解析 */
+/* ===== parse ===== */
 function parseInput(input){
     if(input.startsWith('otpauth://')){
-        const url = new URL(input);
-        const label = decodeURIComponent(url.pathname.slice(1));
-        let [issuer, user] = label.split(':');
+        const url=new URL(input);
+        const label=decodeURIComponent(url.pathname.slice(1));
+        let [issuer,user]=label.split(':');
 
         return {
-            name: url.searchParams.get('issuer') || issuer || '',
-            user: user || '',
-            key: url.searchParams.get('secret')
+            name:url.searchParams.get('issuer')||issuer||'',
+            user:user||'',
+            key:url.searchParams.get('secret')
         };
     }
-    return { name:'', user:'', key:input };
+    return {name:'',user:'',key:input};
 }
 
-/* code */
+/* ===== code ===== */
 function getCode(acc){
     try{
-        const key = acc.raw.startsWith('otpauth://')
+        const key=acc.raw.startsWith('otpauth://')
             ? new URL(acc.raw).searchParams.get('secret')
             : acc.raw;
 
         return totp.generate(key);
-    }catch{
-        return '------';
-    }
+    }catch{return '------'}
 }
 
-/* save */
+/* ===== save ===== */
 function save(){
-    localStorage.setItem('mfa', JSON.stringify(accounts));
+    localStorage.setItem('mfa',JSON.stringify(accounts));
 }
 
-/* toast */
+/* ===== toast ===== */
 function toast(){
-    const t = document.getElementById('toast');
+    const t=document.getElementById('toast');
     t.classList.add('show');
     setTimeout(()=>t.classList.remove('show'),1200);
 }
 
-/* render */
+/* ===== render ===== */
 function render(){
-    const list = document.getElementById('list');
-    list.innerHTML = '';
+    const list=document.getElementById('list');
+    list.innerHTML='';
 
-    const sec = Math.floor(Date.now()/1000)%30;
-    const p = (30-sec)/30*100;
+    const sec=Math.floor(Date.now()/1000)%30;
+    const remain=30-sec;
+    const angle=(sec/30)*360;
 
     /* ===== ADD ===== */
     if(adding){
-        const div = document.createElement('div');
-        div.className = 'card';
+        const div=document.createElement('div');
+        div.className='card';
 
-        div.innerHTML = `
+        div.innerHTML=`
             <div class="name" contenteditable="true">未命名</div>
             <div class="user" contenteditable="true"></div>
 
-            <div class="code editable" contenteditable="true"
-                 data-placeholder="输入 secret 或 otpauth://"></div>
+            <div class="row" style="margin-top:10px;">
+                <div class="code editable" contenteditable="true"
+                     placeholder="secret 或 otpauth://"></div>
 
-            <div class="btns" style="margin-top:10px;">
+                <div class="circle" style="--p:${angle}deg">${remain}</div>
+            </div>
+
+            <div style="margin-top:10px;">
                 <button class="save">保存</button>
-                <button class="cancel">取消</button>
+                <button class="delete">取消</button>
             </div>
         `;
 
-        div.querySelector('.save').onclick = () => {
-            const name = div.querySelector('.name').innerText.trim();
-            const user = div.querySelector('.user').innerText.trim();
-            const raw = div.querySelector('.code').innerText.trim();
+        div.querySelector('.save').onclick=()=>{
+            const name=div.querySelector('.name').innerText.trim();
+            const user=div.querySelector('.user').innerText.trim();
+            const raw=div.querySelector('.code').innerText.trim();
 
-            if(!raw) return;
-
-            const parsed = parseInput(raw);
+            const parsed=parseInput(raw);
 
             accounts.unshift({
                 raw,
-                name: name || parsed.name || '未命名',
-                user: user || parsed.user || ''
+                name:name||parsed.name||'未命名',
+                user:user||parsed.user||''
             });
 
-            adding = false;
+            adding=false;
             save();
             render();
         };
 
-        div.querySelector('.cancel').onclick = () => {
-            adding = false;
+        div.querySelector('.delete').onclick=()=>{
+            adding=false;
             render();
         };
 
@@ -224,56 +237,73 @@ function render(){
 
     /* ===== LIST ===== */
     accounts.forEach((acc,i)=>{
-        const code = getCode(acc);
+        const code=getCode(acc);
 
-        const div = document.createElement('div');
-        div.className = 'card';
+        const div=document.createElement('div');
+        div.className='card';
 
-        const editable = edit ? 'editable' : '';
+        let dirty=false;
 
-        div.innerHTML = `
+        div.innerHTML=`
             <div class="name" contenteditable="${edit}">${acc.name}</div>
             <div class="user" contenteditable="${edit}">${acc.user}</div>
 
-            <div class="code ${editable}" contenteditable="${edit}">
-                ${edit ? acc.raw : code}
+            <div class="row" style="margin-top:10px;">
+                <div class="code ${edit?'editable':''}" contenteditable="${edit}">
+                    ${edit?acc.raw:code}
+                </div>
+
+                <div class="circle" style="--p:${angle}deg">${remain}</div>
             </div>
 
-            ${edit ? `
-            <div class="btns" style="margin-top:10px;">
-                <button class="save">保存</button>
-                <button class="delete">删除</button>
-            </div>` : `
-            <div class="row" style="margin-top:8px;">
-                <div class="progress" style="--p:${p}"></div>
-            </div>`}
+            ${edit?`
+                <div style="margin-top:10px;">
+                    <button class="save">保存</button>
+                    <button class="delete">删除</button>
+                </div>
+            `:''}
         `;
 
+        const nameEl=div.querySelector('.name');
+        const userEl=div.querySelector('.user');
+        const codeEl=div.querySelector('.code');
+
+        /* ===== 编辑标记小点 ===== */
+        function markDirty(){
+            if(!div.querySelector('.dirty')){
+                const dot=document.createElement('div');
+                dot.className='dirty';
+                div.appendChild(dot);
+            }
+        }
+
         if(edit){
-            div.querySelector('.save').onclick = () => {
-                const name = div.querySelector('.name').innerText.trim();
-                const user = div.querySelector('.user').innerText.trim();
-                const raw = div.querySelector('.code').innerText.trim();
+            nameEl.oninput=userEl.oninput=codeEl.oninput=markDirty;
 
-                const parsed = parseInput(raw);
+            div.querySelector('.save').onclick=()=>{
+                const name=nameEl.innerText.trim();
+                const user=userEl.innerText.trim();
+                const raw=codeEl.innerText.trim();
 
-                accounts[i] = {
+                const parsed=parseInput(raw);
+
+                accounts[i]={
                     raw,
-                    name: name || parsed.name || '未命名',
-                    user: user || parsed.user || ''
+                    name:name||parsed.name||'未命名',
+                    user:user||parsed.user||''
                 };
 
                 save();
                 render();
             };
 
-            div.querySelector('.delete').onclick = () => {
+            div.querySelector('.delete').onclick=()=>{
                 accounts.splice(i,1);
                 save();
                 render();
             };
-        } else {
-            div.onclick = async () => {
+        }else{
+            div.onclick=async()=>{
                 await navigator.clipboard.writeText(code);
                 toast();
             };
@@ -283,36 +313,29 @@ function render(){
     });
 }
 
-/* buttons */
-addBtn.onclick = () => {
-    adding = true;
-    render();
-};
+/* ===== buttons ===== */
+addBtn.onclick=()=>{adding=true;render();}
+editBtn.onclick=()=>{edit=!edit;render();}
 
-editBtn.onclick = () => {
-    edit = !edit;
-    render();
-};
+/* ===== tick ===== */
+setInterval(()=>{
+    const sec=Math.floor(Date.now()/1000)%30;
+    const remain=30-sec;
+    const angle=(sec/30)*360;
 
-/* tick */
-setInterval(() => {
-    if (edit || adding) return;
-
-    const sec = Math.floor(Date.now()/1000)%30;
-    const p = (30-sec)/30*100;
-
-    document.querySelectorAll('.card').forEach((card,i)=>{
-        const acc = accounts[i];
-        if(!acc) return;
-
-        const codeEl = card.querySelector('.code');
-        const progEl = card.querySelector('.progress');
-
-        if(codeEl) codeEl.innerText = getCode(acc);
-        if(progEl) progEl.style.setProperty('--p', p);
+    document.querySelectorAll('.circle').forEach(el=>{
+        el.style.setProperty('--p',angle+'deg');
+        el.innerText=remain;
     });
 
-}, 1000);
+    if(edit||adding) return;
+
+    document.querySelectorAll('.code').forEach((el,i)=>{
+        const acc=accounts[i];
+        if(acc) el.innerText=getCode(acc);
+    });
+
+},1000);
 
 render();
 </script>
