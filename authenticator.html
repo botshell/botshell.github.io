@@ -9,63 +9,34 @@
 <script src="https://cdn.jsdelivr.net/npm/@otplib/preset-browser@12.0.1/index.js"></script>
 
 <style>
-body {
-    margin:0;
-    font-family: system-ui;
-    background:#f2f3f5;
-}
+body { margin:0; font-family:system-ui; background:#f2f3f5; }
 
 .header {
     background:#fff;
     padding:16px;
-    font-size:18px;
-    font-weight:600;
     display:flex;
     justify-content:space-between;
     border-bottom:1px solid #eee;
 }
 
-.container {
-    max-width:420px;
-    margin:auto;
-}
+.container { max-width:420px; margin:auto; }
 
 .card {
     background:#fff;
     margin:10px;
-    padding:16px;
+    padding:14px;
     border-radius:14px;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
     box-shadow:0 2px 6px rgba(0,0,0,0.06);
 }
 
-.info {
-    display:flex;
-    flex-direction:column;
-}
+.row { display:flex; justify-content:space-between; align-items:center; }
 
-.name {
-    font-size:14px;
-    color:#666;
-}
-
-.user {
-    font-size:12px;
-    color:#999;
-}
-
-.code {
-    font-size:28px;
-    font-weight:600;
-    letter-spacing:2px;
-    font-family: monospace;
-}
+.name { font-size:14px; color:#666; }
+.user { font-size:12px; color:#999; }
+.code { font-size:28px; font-weight:600; font-family:monospace; }
 
 .progress {
-    width:36px;
-    height:36px;
+    width:36px; height:36px;
     border-radius:50%;
     border:3px solid #ddd;
     position:relative;
@@ -80,17 +51,28 @@ body {
     clip-path: inset(0 0 calc(var(--p)*1%) 0);
 }
 
-.delete {
-    display:none;
-    color:red;
-    font-size:12px;
-    cursor:pointer;
-    margin-top:6px;
+input {
+    width:100%;
+    margin:4px 0;
+    padding:6px;
+    border:1px solid #ddd;
+    border-radius:6px;
 }
 
-.edit .delete {
-    display:block;
+.btns { display:flex; gap:6px; margin-top:6px; }
+
+button {
+    border:none;
+    padding:6px 10px;
+    border-radius:6px;
+    cursor:pointer;
 }
+
+.save { background:#2da44e; color:#fff; }
+.cancel { background:#aaa; color:#fff; }
+.delete { background:red; color:#fff; display:none; }
+
+.edit .delete { display:inline-block; }
 
 .fab {
     position:fixed;
@@ -102,7 +84,6 @@ body {
     background:#1a73e8;
     color:#fff;
     font-size:28px;
-    border:none;
 }
 
 .toast {
@@ -115,7 +96,6 @@ body {
     padding:8px 14px;
     border-radius:6px;
     opacity:0;
-    transition:0.2s;
 }
 
 .toast.show { opacity:1; }
@@ -132,103 +112,155 @@ body {
 <div class="container" id="list"></div>
 
 <button class="fab" id="addBtn">+</button>
-
 <div class="toast" id="toast">已复制</div>
 
 <script>
 const totp = window.otplib.authenticator;
 
 let accounts = JSON.parse(localStorage.getItem('mfa')||'[]');
-let edit = false;
-let dragIndex = null;
+let edit=false;
+let adding=false;
+let dragIndex=null;
 
-/* ---------- 解析输入 ---------- */
+/* 解析 */
 function parseInput(input){
     if(input.startsWith('otpauth://')){
-        const url = new URL(input);
-        const label = decodeURIComponent(url.pathname.slice(1));
-        let [issuerFromLabel, account] = label.split(':');
-
+        const url=new URL(input);
+        const label=decodeURIComponent(url.pathname.slice(1));
+        let [issuer, user]=label.split(':');
         return {
-            name: url.searchParams.get('issuer') || issuerFromLabel || '',
-            user: account || '',
-            key: url.searchParams.get('secret')
+            name:url.searchParams.get('issuer')||issuer||'',
+            user:user||'',
+            key:url.searchParams.get('secret')
         };
     }
-    return { name:'', user:'', key:input };
+    return {name:'',user:'',key:input};
 }
 
-/* ---------- 获取验证码 ---------- */
+/* 验证码 */
 function getCode(acc){
     try{
-        let key;
-
-        if(acc.raw.startsWith('otpauth://')){
-            const url = new URL(acc.raw);
-            key = url.searchParams.get('secret');
-        }else{
-            key = acc.raw;
-        }
+        let key=acc.raw.startsWith('otpauth://')
+            ? new URL(acc.raw).searchParams.get('secret')
+            : acc.raw;
 
         return totp.generate(key).replace(/(\d{3})(\d{3})/,'$1 $2');
-    }catch{
-        return '------';
-    }
+    }catch{return '------'}
 }
 
-function save(){
-    localStorage.setItem('mfa', JSON.stringify(accounts));
-}
+function save(){ localStorage.setItem('mfa',JSON.stringify(accounts)); }
 
-function toast(msg){
-    const t = document.getElementById('toast');
-    t.innerText = msg;
+function toast(){
+    const t=document.getElementById('toast');
     t.classList.add('show');
     setTimeout(()=>t.classList.remove('show'),1500);
 }
 
-/* ---------- 渲染 ---------- */
+/* 渲染 */
 function render(){
-    const list = document.getElementById('list');
+    const list=document.getElementById('list');
     list.innerHTML='';
-    list.classList.toggle('edit', edit);
+    list.classList.toggle('edit',edit);
 
-    const sec = Math.floor(Date.now()/1000)%30;
-    const p = (30-sec)/30*100;
+    const sec=Math.floor(Date.now()/1000)%30;
+    const p=(30-sec)/30*100;
 
-    accounts.forEach((acc,i)=>{
-        const code = getCode(acc);
-
+    /* ===== 新增卡片 ===== */
+    if(adding){
         const div=document.createElement('div');
         div.className='card';
-        div.draggable = edit;
 
         div.innerHTML=`
-            <div class="info">
-                <div class="name">${acc.name || '未命名'}</div>
-                <div class="user">${acc.user || ''}</div>
-                <div class="code">${code}</div>
-            </div>
-            <div>
-                <div class="progress" style="--p:${p}"></div>
-                <div class="delete" data-i="${i}">删除</div>
+            <input placeholder="密钥或 otpauth://" id="newRaw">
+            <input placeholder="名称（可选）" id="newName">
+            <input placeholder="用户（可选）" id="newUser">
+            <div class="btns">
+                <button class="save">保存</button>
+                <button class="cancel">取消</button>
             </div>
         `;
 
-        /* 复制 */
-        div.onclick=async()=>{
-            await navigator.clipboard.writeText(code.replace(' ',''));
-            toast('已复制');
-        };
+        div.querySelector('.save').onclick=()=>{
+            const raw=newRaw.value.trim();
+            if(!raw) return;
 
-        /* 删除 */
-        div.querySelector('.delete').onclick=(e)=>{
-            e.stopPropagation();
-            accounts.splice(i,1);
+            const parsed=parseInput(raw);
+
+            accounts.unshift({
+                raw,
+                name:newName.value||parsed.name||'未命名',
+                user:newUser.value||parsed.user||''
+            });
+
+            adding=false;
             save(); render();
         };
 
-        /* 拖拽排序 */
+        div.querySelector('.cancel').onclick=()=>{
+            adding=false;
+            render();
+        };
+
+        list.appendChild(div);
+    }
+
+    /* ===== 正常卡片 ===== */
+    accounts.forEach((acc,i)=>{
+        const code=getCode(acc);
+
+        const div=document.createElement('div');
+        div.className='card';
+        div.draggable=edit;
+
+        if(edit){
+            div.innerHTML=`
+                <input value="${acc.raw}">
+                <input value="${acc.name}">
+                <input value="${acc.user}">
+                <div class="btns">
+                    <button class="save">保存</button>
+                    <button class="delete">删除</button>
+                </div>
+            `;
+
+            const [rawI,nameI,userI]=div.querySelectorAll('input');
+
+            div.querySelector('.save').onclick=()=>{
+                const parsed=parseInput(rawI.value);
+
+                accounts[i]={
+                    raw:rawI.value,
+                    name:nameI.value||parsed.name||'未命名',
+                    user:userI.value||parsed.user||''
+                };
+
+                save(); render();
+            };
+
+            div.querySelector('.delete').onclick=()=>{
+                accounts.splice(i,1);
+                save(); render();
+            };
+
+        }else{
+            div.innerHTML=`
+                <div class="row">
+                    <div>
+                        <div class="name">${acc.name}</div>
+                        <div class="user">${acc.user}</div>
+                        <div class="code">${code}</div>
+                    </div>
+                    <div class="progress" style="--p:${p}"></div>
+                </div>
+            `;
+
+            div.onclick=async()=>{
+                await navigator.clipboard.writeText(code.replace(' ',''));
+                toast();
+            };
+        }
+
+        /* 拖拽 */
         div.ondragstart=()=>dragIndex=i;
         div.ondragover=e=>e.preventDefault();
         div.ondrop=()=>{
@@ -237,54 +269,17 @@ function render(){
             save(); render();
         };
 
-        /* 编辑（双击） */
-        div.ondblclick = (e) => {
-            e.stopPropagation();
-
-            const raw = prompt('密钥或 otpauth://', acc.raw);
-            if(!raw) return;
-
-            const name = prompt('名称（可选）', acc.name);
-            const user = prompt('用户（可选）', acc.user);
-
-            const parsed = parseInput(raw);
-
-            accounts[i] = {
-                raw,
-                name: name || parsed.name || '未命名',
-                user: user || parsed.user || ''
-            };
-
-            save();
-            render();
-        };
-
         list.appendChild(div);
     });
 }
 
-/* ---------- 添加 ---------- */
-document.getElementById('addBtn').onclick=()=>{
-    const raw = prompt('输入密钥或 otpauth://');
-    if(!raw) return;
-
-    const nameInput = prompt('名称（可选）');
-    const userInput = prompt('用户（可选）');
-
-    const parsed = parseInput(raw);
-
-    accounts.push({
-        raw,
-        name: nameInput || parsed.name || '未命名',
-        user: userInput || parsed.user || ''
-    });
-
-    save();
+/* 按钮 */
+addBtn.onclick=()=>{
+    adding=true;
     render();
 };
 
-/* ---------- 编辑模式 ---------- */
-document.getElementById('editBtn').onclick=()=>{
+editBtn.onclick=()=>{
     edit=!edit;
     render();
 };
@@ -292,6 +287,5 @@ document.getElementById('editBtn').onclick=()=>{
 setInterval(render,1000);
 render();
 </script>
-
 </body>
 </html>
