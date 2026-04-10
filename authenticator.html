@@ -34,10 +34,26 @@ body { margin:0; font-family:system-ui; background:#f2f3f5; }
 .name { font-size:14px; color:#666; outline:none; }
 .user { font-size:12px; color:#999; outline:none; }
 
-.code { font-size:28px; font-weight:600; font-family:monospace; }
+.code {
+    font-size:28px;
+    font-weight:600;
+    font-family:monospace;
+    outline:none;
+    padding:6px 0;
+}
+
+.code.editable {
+    background:#f7f7f7;
+    border-radius:6px;
+    padding:8px;
+    font-size:14px;
+    color:#333;
+    min-height:22px;
+}
 
 .progress {
-    width:36px; height:36px;
+    width:36px;
+    height:36px;
     border-radius:50%;
     border:3px solid #ddd;
     position:relative;
@@ -51,16 +67,6 @@ body { margin:0; font-family:system-ui; background:#f2f3f5; }
     border:3px solid #1a73e8;
     clip-path: inset(0 0 calc(var(--p)*1%) 0);
 }
-
-input {
-    width:100%;
-    margin:6px 0;
-    padding:6px;
-    border:1px solid #ddd;
-    border-radius:6px;
-}
-
-.btns { display:flex; gap:6px; margin-top:8px; }
 
 button {
     border:none;
@@ -170,21 +176,19 @@ function render(){
     const sec = Math.floor(Date.now()/1000)%30;
     const p = (30-sec)/30*100;
 
-    /* ===== ADD MODE ===== */
+    /* ===== ADD ===== */
     if(adding){
         const div = document.createElement('div');
         div.className = 'card';
 
         div.innerHTML = `
-            <div>
-                <div class="name" contenteditable="true">未命名</div>
-                <div class="user" contenteditable="true"></div>
+            <div class="name" contenteditable="true">未命名</div>
+            <div class="user" contenteditable="true"></div>
 
-                <input class="raw" placeholder="Secret 或 otpauth://">
-                <div class="code">------</div>
-            </div>
+            <div class="code editable" contenteditable="true"
+                 data-placeholder="输入 secret 或 otpauth://"></div>
 
-            <div class="btns">
+            <div class="btns" style="margin-top:10px;">
                 <button class="save">保存</button>
                 <button class="cancel">取消</button>
             </div>
@@ -193,7 +197,7 @@ function render(){
         div.querySelector('.save').onclick = () => {
             const name = div.querySelector('.name').innerText.trim();
             const user = div.querySelector('.user').innerText.trim();
-            const raw = div.querySelector('.raw').value.trim();
+            const raw = div.querySelector('.code').innerText.trim();
 
             if(!raw) return;
 
@@ -225,26 +229,31 @@ function render(){
         const div = document.createElement('div');
         div.className = 'card';
 
+        const editable = edit ? 'editable' : '';
+
+        div.innerHTML = `
+            <div class="name" contenteditable="${edit}">${acc.name}</div>
+            <div class="user" contenteditable="${edit}">${acc.user}</div>
+
+            <div class="code ${editable}" contenteditable="${edit}">
+                ${edit ? acc.raw : code}
+            </div>
+
+            ${edit ? `
+            <div class="btns" style="margin-top:10px;">
+                <button class="save">保存</button>
+                <button class="delete">删除</button>
+            </div>` : `
+            <div class="row" style="margin-top:8px;">
+                <div class="progress" style="--p:${p}"></div>
+            </div>`}
+        `;
+
         if(edit){
-            div.innerHTML = `
-                <div>
-                    <div class="name" contenteditable="true">${acc.name}</div>
-                    <div class="user" contenteditable="true">${acc.user}</div>
-
-                    <input class="raw" value="${acc.raw}">
-                    <div class="code">${code}</div>
-                </div>
-
-                <div class="btns">
-                    <button class="save">保存</button>
-                    <button class="delete">删除</button>
-                </div>
-            `;
-
             div.querySelector('.save').onclick = () => {
                 const name = div.querySelector('.name').innerText.trim();
                 const user = div.querySelector('.user').innerText.trim();
-                const raw = div.querySelector('.raw').value.trim();
+                const raw = div.querySelector('.code').innerText.trim();
 
                 const parsed = parseInput(raw);
 
@@ -263,19 +272,7 @@ function render(){
                 save();
                 render();
             };
-
         } else {
-            div.innerHTML = `
-                <div class="row">
-                    <div>
-                        <div class="name">${acc.name}</div>
-                        <div class="user">${acc.user}</div>
-                        <div class="code">${code}</div>
-                    </div>
-                    <div class="progress" style="--p:${p}"></div>
-                </div>
-            `;
-
             div.onclick = async () => {
                 await navigator.clipboard.writeText(code);
                 toast();
