@@ -5,106 +5,137 @@
     <title>网页版身份验证器</title>
     <script src="https://cdn.jsdelivr.net/npm/otplib@12.0.1/otplib-browser.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .input-group { margin-bottom: 20px; display: flex; gap: 10px; }
-        input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; background: #007bff; color: white; }
-        .item { border-bottom: 1px solid #eee; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
-        .code { font-size: 24px; font-weight: bold; color: #007bff; letter-spacing: 2px; }
-        .name { color: #666; font-size: 14px; }
-        .delete-btn { background: #dc3545; font-size: 12px; }
-        .progress-bar { height: 4px; background: #eee; width: 100%; margin-top: 10px; border-radius: 2px; overflow: hidden; }
-        .progress-inner { height: 100%; background: #007bff; width: 0%; transition: width 1s linear; }
+        body { font-family: -apple-system, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 40px 20px; }
+        .container { width: 100%; max-width: 450px; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; color: #1c1e21; font-size: 24px; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        input { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        .add-btn { background: #007bff; color: white; }
+        .item { border-bottom: 1px solid #f0f0f0; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
+        .code { font-family: monospace; font-size: 28px; color: #007bff; font-weight: bold; cursor: pointer; }
+        .code:active { opacity: 0.6; }
+        .name { color: #65676b; font-size: 14px; margin-bottom: 4px; }
+        .delete-btn { background: #ffebee; color: #dc3545; padding: 6px 12px; font-size: 12px; }
+        .progress-bar { height: 4px; background: #eee; width: 100%; margin-top: 20px; border-radius: 2px; }
+        #progressInner { height: 100%; background: #007bff; width: 100%; transition: width 0.5s linear; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>我的验证码</h2>
+    <h2>身份验证器</h2>
     
     <div class="input-group">
-        <input type="text" id="nameInput" placeholder="账号名称 (如: Google)">
-        <input type="text" id="keyInput" placeholder="Secret Key">
-        <button onclick="addKey()">添加</button>
+        <input type="text" id="nameInput" placeholder="备注名称 (如: GitHub)">
+        <input type="text" id="keyInput" placeholder="输入 Secret Key (Base32格式)">
+        <button class="add-btn" onclick="addKey()">添加新密钥</button>
     </div>
 
     <div id="keyList"></div>
     
     <div class="progress-bar">
-        <div id="progressInner" class="progress-inner"></div>
+        <div id="progressInner"></div>
     </div>
 </div>
 
 <script>
-    // 配置 otplib
+    // --- 1. 变量声明置顶 ---
     const totp = window.otplib.totp;
+    let accounts = [];
 
-    // 从 LocalStorage 加载数据
-    let accounts = JSON.parse(localStorage.getItem('mfa_keys') || '[]');
-
-    function saveAndRender() {
-        localStorage.setItem('mfa_keys', JSON.stringify(accounts));
+    // --- 2. 初始化函数 ---
+    function init() {
+        try {
+            const saved = localStorage.getItem('mfa_keys');
+            accounts = saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("加载数据失败", e);
+            accounts = [];
+        }
         renderList();
     }
 
-    function addKey() {
-        const name = document.getElementById('nameInput').value.trim();
-        const key = document.getElementById('keyInput').value.trim().replace(/\s+/g, '');
-        if (name && key) {
-            accounts.push({ name, key });
-            document.getElementById('nameInput').value = '';
-            document.getElementById('keyInput').value = '';
-            saveAndRender();
-        }
-    }
-
-    function deleteKey(index) {
-        if (confirm('确定删除吗？')) {
-            accounts.splice(index, 1);
-            saveAndRender();
-        }
-    }
-
+    // --- 3. 核心功能函数 ---
     function renderList() {
         const listDiv = document.getElementById('keyList');
         listDiv.innerHTML = '';
         
         accounts.forEach((acc, index) => {
-            let code = "ERROR";
+            let code = "------";
             try {
-                // 生成 6 位数字
-                code = totp.generate(acc.key);
+                // 移除空格并生成
+                const cleanKey = acc.key.replace(/\s+/g, '').toUpperCase();
+                code = totp.generate(cleanKey);
             } catch (e) {
-                code = "INVALID";
+                code = "KEY错误";
             }
 
-            listDiv.innerHTML += `
-                <div class="item">
-                    <div>
-                        <div class="name">${acc.name}</div>
-                        <div class="code">${code}</div>
-                    </div>
-                    <button class="delete-btn" onclick="deleteKey(${index})">删除</button>
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.innerHTML = `
+                <div>
+                    <div class="name">${acc.name}</div>
+                    <div class="code" onclick="copyCode('${code}')" title="点击复制">${code}</div>
                 </div>
+                <button class="delete-btn" onclick="deleteKey(${index})">删除</button>
             `;
+            listDiv.appendChild(item);
         });
     }
 
-    // 每秒更新一次
-    setInterval(() => {
-        const seconds = Math.floor(Date.now() / 1000) % 30;
-        const percent = ((30 - seconds) / 30) * 100;
-        document.getElementById('progressInner').style.width = percent + '%';
+    function addKey() {
+        const nameNode = document.getElementById('nameInput');
+        const keyNode = document.getElementById('keyInput');
         
-        // 每当时间跳到 0 秒或 30 秒时刷新数字
+        const name = nameNode.value.trim();
+        const key = keyNode.value.trim();
+
+        if (!name || !key) {
+            alert("名称和密钥不能为空");
+            return;
+        }
+
+        accounts.push({ name, key });
+        localStorage.setItem('mfa_keys', JSON.stringify(accounts));
+        
+        nameNode.value = '';
+        keyNode.value = '';
+        renderList();
+    }
+
+    function deleteKey(index) {
+        if (confirm('确定删除该密钥吗？')) {
+            accounts.splice(index, 1);
+            localStorage.setItem('mfa_keys', JSON.stringify(accounts));
+            renderList();
+        }
+    }
+
+    function copyCode(code) {
+        navigator.clipboard.writeText(code).then(() => {
+            alert("验证码已复制: " + code);
+        });
+    }
+
+    // --- 4. 循环计时器 ---
+    setInterval(() => {
+        const epoch = Math.floor(Date.now() / 1000);
+        const seconds = epoch % 30;
+        const remaining = 30 - seconds;
+        
+        // 更新进度条
+        document.getElementById('progressInner').style.width = (remaining / 30 * 100) + '%';
+        
+        // 每 30 秒整或页面刚加载时刷新数字
         if (seconds === 0) {
             renderList();
         }
     }, 1000);
 
-    // 初始渲染
-    renderList();
+    // 执行初始化
+    init();
+
 </script>
 
 </body>
