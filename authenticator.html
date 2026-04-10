@@ -363,9 +363,29 @@ addBtn.onclick=()=>{adding=true;render();}
 editBtn.onclick=()=>{edit=!edit;render();}
 
 /* ===== tick ===== */
-setInterval(()=>{
-    render();
-},1000);
+setInterval(() => {
+    if (edit || adding) return;
+
+    const sec = Math.floor(Date.now()/1000)%30;
+    const p = (30-sec)/30*100;
+
+    document.querySelectorAll('.card').forEach((card, i) => {
+        const acc = accounts[i];
+        if (!acc) return;
+
+        const codeEl = card.querySelector('.code');
+        const progEl = card.querySelector('.progress');
+
+        if (codeEl) {
+            codeEl.innerText = getCode(acc);
+        }
+
+        if (progEl) {
+            progEl.style.setProperty('--p', p);
+        }
+    });
+
+}, 1000);
 
 render();
 </script>
